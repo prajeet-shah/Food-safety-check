@@ -123,43 +123,48 @@ class FoodAdulterationPredictor:
         model_dir = "deberta_food_safety_model_cpu"
         zip_path = "deberta_food_safety_model_cpu.zip"
         
-        # Google Drive file ID - extract from your shareable link
-        # Your link: https://drive.google.com/drive/folders/1P6TLy8fT0EZAzFyb4itHQr1XCNwNVoib
-        # https://drive.google.com/file/d/1ME_LnrTBdUySpQhMcTO40JC9wcwdc-Ux/view?usp=sharing
-        # We need the direct download link for the zip file
-        file_id = "1ME_LnrTBdUySpQhMcTO40JC9wcwdc-Ux"
+        # Check if model directory already exists with all required files
+        required_files = ['config.json', 'model.safeensors', 'tokenizer_config.json']
+        if os.path.exists(model_dir):
+            has_all_files = all(os.path.exists(os.path.join(model_dir, f)) for f in required_files)
+            if has_all_files:
+                return True
         
-        # Create download URL
+        # Google Drive file ID
+        file_id = "1ME_LnrTBdUySpQhMcTO40JC9wcwdc-Ux"
         download_url = f"https://drive.google.com/uc?id={file_id}"
         
-        if not os.path.exists(model_dir):
-            st.info("📥 Downloading AI model (1GB)... This may take a few minutes.")
+        st.info("📥 Downloading AI model (1GB)... This may take a few minutes.")
+        
+        # Create progress bar
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        try:
+            # Download with progress
+            gdown.download(download_url, zip_path, quiet=False)
             
-            # Create progress bar
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+            # Update progress
+            progress_bar.progress(50)
+            status_text.text("📦 Extracting model files...")
             
-            try:
-                # Download with progress
-                gdown.download(download_url, zip_path, quiet=False)
-                
-                # Update progress
-                progress_bar.progress(50)
-                status_text.text("📦 Extracting model files...")
-                
-                # Extract zip file
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(".")
-                
-                # Clean up
+            # Ensure model directory exists
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # Extract zip file
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(model_dir)
+            
+            # Clean up zip file
+            if os.path.exists(zip_path):
                 os.remove(zip_path)
-                
-                progress_bar.progress(100)
-                status_text.text("✅ Model downloaded successfully!")
-                
-            except Exception as e:
-                st.error(f"❌ Download failed: {str(e)}")
-                return False
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Model downloaded successfully!")
+            
+        except Exception as e:
+            st.error(f"❌ Download failed: {str(e)}")
+            return False
         
         return True
     
@@ -173,8 +178,8 @@ class FoodAdulterationPredictor:
             
             model_dir = "deberta_food_safety_model_cpu"
             
-            # Verify model files exist
-            required_files = ['config.json', 'pytorch_model.bin', 'tokenizer_config.json']
+            # Verify model files exist - UPDATED FOR ACTUAL FILES
+            required_files = ['config.json', 'model.safeensors', 'tokenizer_config.json']
             for file in required_files:
                 if not os.path.exists(os.path.join(model_dir, file)):
                     st.error(f"❌ Missing model file: {file}")
@@ -182,7 +187,10 @@ class FoodAdulterationPredictor:
             
             # Load tokenizer and model
             tokenizer = AutoTokenizer.from_pretrained(model_dir)
-            model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+            model = AutoModelForSequenceClassification.from_pretrained(
+                model_dir,
+                use_safetensors=True  # Explicitly use safetensors
+            )
             
             st.success("✅ AI Model loaded successfully!")
             return model, tokenizer
