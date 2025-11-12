@@ -107,67 +107,68 @@ class FoodAdulterationPredictor:
     def __init__(self):
         self.tokenizer = None
         self.model = None
+        # lists of E-numbers (lowercase, digits kept)
         self.risky_additives = {
-            'high_risk': ['e102', 'e110', 'e122', 'e123', 'e124', 'e129', 'e133', 'e142', 'e151', 'e155',
-                         'e211', 'e212', 'e213', 'e214', 'e215', 'e216', 'e217', 'e218', 'e219',
-                         'e249', 'e250', 'e251', 'e252', 'e320', 'e321', 'e621', 'e951', 'e954'],
-            'medium_risk': ['e104', 'e127', 'e128', 'e950', 'e952', 'e622', 'e623', 'e624', 'e625']
+            'high_risk': ['102', '110', '122', '123', '124', '129', '133', '142', '151', '155',
+                          '211', '212', '213', '214', '215', '216', '217', '218', '219',
+                          '249', '250', '251', '252', '320', '321', '621', '951', '954'],
+            'medium_risk': ['104', '127', '128', '950', '952', '622', '623', '624', '625']
         }
         self.suspicious_patterns = [
-            'artificial', 'preservative', 'synthetic', 'hydrogenated', 
+            'artificial', 'preservative', 'synthetic', 'hydrogenated',
             'modified starch', 'high fructose', 'msg', 'aspartame', 'saccharin'
         ]
-    
+
     def download_model_from_drive(self):
         """Download model from Google Drive with progress tracking"""
         model_dir = "deberta_food_safety_model_cpu"
         zip_path = "deberta_food_safety_model_cpu.zip"
-        
+
         # Check if model directory already exists with all required files
         required_files = ['config.json', 'model.safetensors', 'tokenizer_config.json']
         if os.path.exists(model_dir):
             has_all_files = all(os.path.exists(os.path.join(model_dir, f)) for f in required_files)
             if has_all_files:
                 return True
-        
+
         # Google Drive file ID
         file_id = "1ME_LnrTBdUySpQhMcTO40JC9wcwdc-Ux"
         download_url = f"https://drive.google.com/uc?id={file_id}"
-        
+
         st.info("📥 Downloading AI model (1GB)... This may take a few minutes.")
-        
+
         # Create progress bar
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         try:
-            # Download with progress
+            # Download with gdown (quiet=False prints progress)
             gdown.download(download_url, zip_path, quiet=False)
-            
+
             # Update progress
             progress_bar.progress(50)
             status_text.text("📦 Extracting model files...")
-            
+
             # Ensure model directory exists
             os.makedirs(model_dir, exist_ok=True)
-            
+
             # Extract zip file
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(model_dir)
-            
+
             # Clean up zip file
             if os.path.exists(zip_path):
                 os.remove(zip_path)
-            
+
             progress_bar.progress(100)
             status_text.text("✅ Model downloaded successfully!")
-            
+
         except Exception as e:
             st.error(f"❌ Download failed: {str(e)}")
             return False
-        
+
         return True
-    
+
     @st.cache_resource(show_spinner=False)
     def load_model(_self):
         """Load the DeBERTa model with caching"""
@@ -175,30 +176,30 @@ class FoodAdulterationPredictor:
             # First, download the model if not exists
             if not _self.download_model_from_drive():
                 return None, None
-            
+
             model_dir = "deberta_food_safety_model_cpu"
-            
+
             # Verify model files exist - UPDATED FOR ACTUAL FILES
             required_files = ['config.json', 'model.safetensors', 'tokenizer_config.json']
             for file in required_files:
                 if not os.path.exists(os.path.join(model_dir, file)):
                     st.error(f"❌ Missing model file: {file}")
                     return None, None
-            
+
             # Load tokenizer and model
             tokenizer = AutoTokenizer.from_pretrained(model_dir)
             model = AutoModelForSequenceClassification.from_pretrained(
                 model_dir,
                 use_safetensors=True  # Explicitly use safetensors
             )
-            
+
             st.success("✅ AI Model loaded successfully!")
             return model, tokenizer
-            
+
         except Exception as e:
             st.error(f"❌ Error loading model: {str(e)}")
             return None, None
-    
+
     def preprocess_text(self, product_name, ingredients, additives, allergens, nutrition_grade):
         """Preprocess input text for the model"""
         combined_text = (
@@ -209,30 +210,42 @@ class FoodAdulterationPredictor:
             f"Nutrition Grade: {nutrition_grade}"
         )
         return combined_text
-    
+
+    def _clean_additive(self, additive):
+        """Return only digits of typical E-number strings like 'E471' or 'en:e471'"""
+        if not additive:
+            return ""
+        s = additive.lower()
+        # remove common prefixes
+        s = s.replace("en:", "").replace("e:", "").replace("e", "")
+        # extract digits
+        digits = re.findall(r"\d+", s)
+        return digits[0] if digits else ""
+
     def analyze_risk_factors(self, ingredients_text, additives_list):
         """Analyze risk factors in ingredients and additives"""
         found_risky = []
         risk_score = 0
-        
+
         ingredients_lower = ingredients_text.lower()
-        
+
         # Check risky additives
         for additive in additives_list:
-            additive_clean = additive.lower().replace('en:', '').replace('e', '')
-            if any(risky in additive_clean for risky in self.risky_additives['high_risk']):
-                found_risky.append(f"🚨 High-risk additive: {additive}")
-                risk_score += 3
-            elif any(risky in additive_clean for risky in self.risky_additives['medium_risk']):
-                found_risky.append(f"⚠️ Medium-risk additive: {additive}")
-                risk_score += 1
-        
+            additive_clean = self._clean_additive(additive)
+            if additive_clean:
+                if additive_clean in self.risky_additives['high_risk']:
+                    found_risky.append(f"🚨 High-risk additive: {additive}")
+                    risk_score += 3
+                elif additive_clean in self.risky_additives['medium_risk']:
+                    found_risky.append(f"⚠️ Medium-risk additive: {additive}")
+                    risk_score += 1
+
         # Check suspicious patterns
         for pattern in self.suspicious_patterns:
             if pattern in ingredients_lower:
-                found_risky.append(f"🔍 Suspicious ingredient: {pattern}")
+                found_risky.append(f"🔍 Suspicious ingredient/pattern: {pattern}")
                 risk_score += 2
-        
+
         # Additive count penalty
         additive_count = len(additives_list)
         if additive_count > 10:
@@ -241,20 +254,23 @@ class FoodAdulterationPredictor:
         elif additive_count > 5:
             risk_score += 2
             found_risky.append(f"📊 High additive count: {additive_count}")
-        
+
+        # Cap risk_score to reasonable maximum for later use (but we won't display raw score)
+        risk_score = int(min(risk_score, 10))
+
         return found_risky, risk_score
-    
+
     def predict(self, product_name, ingredients_text, additives_list, allergens_list, nutrition_grade):
         """Make prediction using the loaded model"""
         if self.model is None or self.tokenizer is None:
             return None, None, [], 0
-        
+
         try:
             # Preprocess input
             combined_text = self.preprocess_text(
                 product_name, ingredients_text, additives_list, allergens_list, nutrition_grade
             )
-            
+
             # Tokenize
             inputs = self.tokenizer(
                 combined_text,
@@ -263,109 +279,110 @@ class FoodAdulterationPredictor:
                 padding=True,
                 max_length=512
             )
-            
+
             # Predict
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
                 confidence, predicted_class = torch.max(predictions, dim=1)
-            
+
             # Analyze risk factors
             found_risky, risk_score = self.analyze_risk_factors(ingredients_text, additives_list)
-            
+
             return predicted_class.item(), confidence.item(), found_risky, risk_score
-            
+
         except Exception as e:
             st.error(f"Prediction error: {str(e)}")
             return None, None, [], 0
 
+
 def main():
     # Initialize predictor
     predictor = FoodAdulterationPredictor()
-    
+
     # Header
     st.markdown('<div class="main-header">🍎 Food Adulteration Detector</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">AI-Powered Food Safety Analysis • 98.9% Accuracy</div>', unsafe_allow_html=True)
-    
+
     # Load model (with progress)
     with st.spinner('🚀 Loading AI Model... This might take a few minutes on first run'):
         predictor.model, predictor.tokenizer = predictor.load_model()
-    
+
     # Show model status
     if predictor.model is None:
         st.error("""
         ❌ **Model failed to load.** 
-        
+
         This could be because:
         - The model is still downloading (check the progress above)
         - Network connectivity issues
         - Google Drive download limits
-        
+
         Please wait a moment and refresh the page. If the problem persists, check the Google Drive link.
         """)
         return
-    
+
     # Main content
     col1, col2 = st.columns([1, 1])
-    
+
     with col1:
         st.markdown("### 📝 Product Information")
-        
+
         with st.form("product_form"):
             product_name = st.text_input(
                 "**Product Name**",
                 placeholder="e.g., Chocolate Chip Cookies, Fruit Juice, etc."
             )
-            
+
             ingredients_text = st.text_area(
                 "**Ingredients List** *",
                 height=150,
                 placeholder="Paste the complete ingredients list here...\nExample: wheat flour, sugar, palm oil, cocoa, emulsifier (soya lecithin), artificial flavor"
             )
-            
+
             additives = st.text_area(
                 "**Additives (Optional)**",
                 height=100,
                 placeholder="Enter additives, one per line...\nExample: E102\nE211\nE621"
             )
-            
+
             allergens = st.text_area(
                 "**Allergens (Optional)**",
                 height=80,
                 placeholder="Enter allergens, one per line...\nExample: Milk\nSoy\nWheat"
             )
-            
+
             nutrition_grade = st.selectbox(
                 "**Nutrition Grade (Optional)**",
                 ["", "A", "B", "C", "D", "E", "Unknown"]
             )
-            
+
             submitted = st.form_submit_button("🔍 Analyze Product Safety", use_container_width=True)
-    
+
     with col2:
         st.markdown("### ℹ️ How It Works")
-        
+
         st.markdown("""
         <div class="feature-card">
         <h4>🧠 AI-Powered Analysis</h4>
         <p>Our DeBERTa v3 model analyzes product information with <b>98.9% accuracy</b> to detect potential adulteration risks.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("""
         <div class="feature-card">
         <h4>🚨 Risk Detection</h4>
         <p>Identifies high-risk additives, artificial ingredients, and suspicious patterns that may indicate adulteration.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         st.markdown("""
         <div class="feature-card">
         <h4>📊 Comprehensive Scoring</h4>
         <p>Provides detailed risk analysis with confidence scores and specific concerns identified.</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Quick tips
         st.markdown("### 💡 Quick Tips")
         st.info("""
@@ -374,7 +391,7 @@ def main():
         - **Choose natural** - Prefer products with recognizable ingredients
         - **Check nutrition grades** - A/B grades generally indicate healthier options
         """)
-    
+
     # Handle form submission
     if submitted:
         if not ingredients_text.strip():
@@ -384,51 +401,99 @@ def main():
                 # Process inputs
                 additives_list = [additive.strip() for additive in additives.split('\n') if additive.strip()]
                 allergens_list = [allergen.strip() for allergen in allergens.split('\n') if allergen.strip()]
-                
+
                 # Make prediction
                 prediction, confidence, found_risky, risk_score = predictor.predict(
                     product_name, ingredients_text, additives_list, allergens_list, nutrition_grade
                 )
-                
+
                 if prediction is not None:
                     # Display results
                     st.markdown("---")
                     st.markdown("## 📊 Analysis Results")
-                    
-                    # Simplified risk level display - only based on AI prediction
-                    if prediction == 1:
+
+                    # Determine risk_html using AI prediction and rule-based risk_score
+                    if prediction == 1:  # AI says high risk
+                        if risk_score >= 3:  # Rule-based system also finds significant risks
+                            risk_html = """
+                            <div class="risk-high">
+                                <h2>🚨 HIGH RISK - POSSIBLY ADULTERATED</h2>
+                                <p>Both AI analysis and rule-based risk factors indicate potential adulteration concerns.</p>
+                            </div>
+                            """
+                        else:  # AI says high risk but few rule-based factors
+                            risk_html = """
+                            <div class="risk-medium">
+                                <h2>⚠️ AI DETECTED PATTERNS - REVIEW RECOMMENDED</h2>
+                                <p>The AI model detected concerning patterns; please review the ingredient list carefully.</p>
+                            </div>
+                            """
+                    elif risk_score >= 5:  # Rules say high risk but AI doesn't
                         risk_html = """
                         <div class="risk-high">
-                            <h2>🚨 HIGH RISK - POSSIBLY ADULTERATED</h2>
-                            <p>AI analysis detected potential adulteration patterns in this product.</p>
+                            <h2>🚨 HIGH RISK - MULTIPLE RISK FACTORS</h2>
+                            <p>Multiple rule-based risk factors were detected.</p>
                         </div>
                         """
-                    else:
+                    elif risk_score >= 2:  # Medium risk based on rules
+                        risk_html = """
+                        <div class="risk-medium">
+                            <h2>⚠️ MEDIUM RISK - NEEDS CAUTION</h2>
+                            <p>This product has some concerning factors. Review carefully.</p>
+                        </div>
+                        """
+                    else:  # Low risk
                         risk_html = """
                         <div class="risk-low">
                             <h2>✅ LOW RISK - LIKELY SAFE</h2>
-                            <p>AI analysis indicates this product appears safe with minimal risk factors.</p>
+                            <p>This product appears to have minimal detected risk factors.</p>
                         </div>
                         """
-                    
+
                     st.markdown(risk_html, unsafe_allow_html=True)
-                    
-                    # Simplified metrics - only Confidence and AI Model
-                    col1, col2 = st.columns(2)
-                    
+
+                    # Metrics: now only show Confidence, Risk Level, AI Model (no numeric risk score displayed)
+                    col1, col2, col3 = st.columns(3)
+
                     with col1:
-                        st.markdown('<div class="metric-card"><h3>Confidence</h3><h2>{:.1%}</h2></div>'.format(confidence), 
+                        st.markdown('<div class="metric-card"><h3>Confidence</h3><h2>{:.1%}</h2></div>'.format(confidence),
                                    unsafe_allow_html=True)
-                    
+
                     with col2:
-                        st.markdown('<div class="metric-card"><h3>AI Model</h3><h2>DeBERTa v3</h2></div>', 
+                        # Consistent risk level calculation (uses internal risk_score but not shown)
+                        if prediction == 1 and risk_score >= 3:
+                            risk_level = "HIGH"
+                        elif prediction == 1 and risk_score < 3:
+                            risk_level = "MEDIUM"
+                        elif risk_score >= 5:
+                            risk_level = "HIGH"
+                        elif risk_score >= 2:
+                            risk_level = "MEDIUM"
+                        else:
+                            risk_level = "LOW"
+                        st.markdown('<div class="metric-card"><h3>Risk Level</h3><h2>{}</h2></div>'.format(risk_level),
                                    unsafe_allow_html=True)
-                    
+
+                    with col3:
+                        st.markdown('<div class="metric-card"><h3>AI Model</h3><h2>DeBERTa v3</h2></div>',
+                                   unsafe_allow_html=True)
+
+                    # Risk factors (only display if any were found)
+                    if found_risky:
+                        st.markdown("### 🚨 Identified Risk Factors")
+                        for factor in found_risky:
+                            st.write(f"• {factor}")
+
+                    # NOTE: per request, removed the "No Major Risk Factors Found" message
+                    # and the entire "Detailed Analysis" explanatory block.
+                    # We still compute internal risk_score and use it to set Risk Level above,
+                    # but we do not show the numeric risk score or the detailed analysis block.
+
                     # Ingredient summary
                     st.markdown("### 🔍 Ingredient Summary")
                     ingredient_count = len([x for x in ingredients_text.split(',') if x.strip()])
                     additive_count = len(additives_list)
-                    
+
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("Total Ingredients", ingredient_count)
