@@ -179,7 +179,7 @@ class FoodAdulterationPredictor:
             model_dir = "deberta_food_safety_model_cpu"
             
             # Verify model files exist - UPDATED FOR ACTUAL FILES
-            required_files = ['config.json', 'model.safeensors', 'tokenizer_config.json']
+            required_files = ['config.json', 'model.safetensors', 'tokenizer_config.json']
             for file in required_files:
                 if not os.path.exists(os.path.join(model_dir, file)):
                     st.error(f"❌ Missing model file: {file}")
