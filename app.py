@@ -124,7 +124,7 @@ class FoodAdulterationPredictor:
         zip_path = "deberta_food_safety_model_cpu.zip"
         
         # Check if model directory already exists with all required files
-        required_files = ['config.json', 'model.safeensors', 'tokenizer_config.json']
+        required_files = ['config.json', 'model.safetensors', 'tokenizer_config.json']
         if os.path.exists(model_dir):
             has_all_files = all(os.path.exists(os.path.join(model_dir, f)) for f in required_files)
             if has_all_files:
