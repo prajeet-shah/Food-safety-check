@@ -395,126 +395,34 @@ def main():
                     st.markdown("---")
                     st.markdown("## 📊 Analysis Results")
                     
-                    # FIXED: Consistent risk level logic
-                    if prediction == 1:  # AI says high risk
-                        if risk_score >= 3:  # Rule-based system also finds significant risks
-                            risk_html = """
-                            <div class="risk-high">
-                                <h2>🚨 HIGH RISK - POSSIBLY ADULTERATED</h2>
-                                <p>Both AI analysis and risk factors indicate potential adulteration concerns.</p>
-                            </div>
-                            """
-                        else:  # AI says high risk but few rule-based factors
-                            risk_html = """
-                            <div class="risk-medium">
-                                <h2>⚠️ AI DETECTED PATTERNS - REVIEW RECOMMENDED</h2>
-                                <p>The AI model detected concerning patterns, though no major risk factors were found in our rule-based check.</p>
-                            </div>
-                            """
-                    elif risk_score >= 5:  # Rules say high risk but AI doesn't
+                    # Simplified risk level display - only based on AI prediction
+                    if prediction == 1:
                         risk_html = """
                         <div class="risk-high">
-                            <h2>🚨 HIGH RISK - MULTIPLE RISK FACTORS</h2>
-                            <p>Multiple risk factors detected despite AI assessment.</p>
+                            <h2>🚨 HIGH RISK - POSSIBLY ADULTERATED</h2>
+                            <p>AI analysis detected potential adulteration patterns in this product.</p>
                         </div>
                         """
-                    elif risk_score >= 2:  # Medium risk based on rules
-                        risk_html = """
-                        <div class="risk-medium">
-                            <h2>⚠️ MEDIUM RISK - NEEDS CAUTION</h2>
-                            <p>This product has some concerning factors. Review carefully.</p>
-                        </div>
-                        """
-                    else:  # Low risk
+                    else:
                         risk_html = """
                         <div class="risk-low">
                             <h2>✅ LOW RISK - LIKELY SAFE</h2>
-                            <p>This product appears safe with minimal risk factors.</p>
+                            <p>AI analysis indicates this product appears safe with minimal risk factors.</p>
                         </div>
                         """
                     
                     st.markdown(risk_html, unsafe_allow_html=True)
                     
-                    # Metrics
-                    col1, col2, col3, col4 = st.columns(4)
+                    # Simplified metrics - only Confidence and AI Model
+                    col1, col2 = st.columns(2)
                     
                     with col1:
                         st.markdown('<div class="metric-card"><h3>Confidence</h3><h2>{:.1%}</h2></div>'.format(confidence), 
                                    unsafe_allow_html=True)
                     
                     with col2:
-                        st.markdown('<div class="metric-card"><h3>Risk Score</h3><h2>{}/10</h2></div>'.format(min(risk_score, 10)), 
-                                   unsafe_allow_html=True)
-                    
-                    with col3:
-                        # FIXED: Consistent risk level calculation
-                        if prediction == 1 and risk_score >= 3:
-                            risk_level = "HIGH"
-                        elif prediction == 1 and risk_score < 3:
-                            risk_level = "MEDIUM"
-                        elif risk_score >= 5:
-                            risk_level = "HIGH"
-                        elif risk_score >= 2:
-                            risk_level = "MEDIUM"
-                        else:
-                            risk_level = "LOW"
-                        st.markdown('<div class="metric-card"><h3>Risk Level</h3><h2>{}</h2></div>'.format(risk_level), 
-                                   unsafe_allow_html=True)
-                    
-                    with col4:
                         st.markdown('<div class="metric-card"><h3>AI Model</h3><h2>DeBERTa v3</h2></div>', 
                                    unsafe_allow_html=True)
-                    
-                    # Risk factors
-                    if found_risky:
-                        st.markdown("### 🚨 Identified Risk Factors")
-                        for factor in found_risky:
-                            st.write(f"• {factor}")
-                    else:
-                        st.markdown("### ✅ No Major Risk Factors Found")
-                        st.success("No high-risk additives or suspicious ingredients detected.")
-                    
-                    # Detailed explanation
-                    st.markdown("### 📝 Detailed Analysis")
-                    
-                    if prediction == 1:
-                        if risk_score >= 3:
-                            st.warning("""
-                            **AI Detection Alert + Rule-based Risk Factors:** Both systems indicate potential adulteration concerns.
-                            
-                            **Recommendations:**
-                            - Consider alternative products with simpler ingredient lists
-                            - Look for certified organic or natural alternatives
-                            - Consult nutritional experts if concerned
-                            """)
-                        else:
-                            st.warning("""
-                            **AI Pattern Detection:** The AI model detected concerning patterns that weren't captured by our rule-based system.
-                            
-                            **Recommendations:**
-                            - Review the ingredient list carefully
-                            - Consider simpler alternatives
-                            - The AI may be detecting complex patterns in the ingredient combinations
-                            """)
-                    else:
-                        if risk_score >= 2:
-                            st.warning("""
-                            **Rule-based Risk Factors:** Several concerning ingredients or additives were identified.
-                            
-                            **Recommendations:**
-                            - Review the identified risk factors above
-                            - Consider products with fewer additives
-                            - Look for cleaner ingredient lists
-                            """)
-                        else:
-                            st.success("""
-                            **AI Safety Assessment:** The product appears to meet standard safety criteria.
-                            
-                            **Good Practices:**
-                            - Continue reading labels for new purchases
-                            - Maintain balanced dietary choices
-                            - Stay informed about food safety updates
-                            """)
                     
                     # Ingredient summary
                     st.markdown("### 🔍 Ingredient Summary")
